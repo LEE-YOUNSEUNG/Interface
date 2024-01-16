@@ -1,0 +1,32 @@
+int trig = 8;
+int echo = 9;
+void setup() {
+ Serial.begin(9600);
+ pinMode(trig,OUTPUT);
+ pinMode(echo,INPUT);
+}
+
+void loop() {
+ float time;
+ float distance;
+ int height;
+ digitalWrite(trig,HIGH);
+ delay(100);
+ digitalWrite(trig,LOW);
+  time = pulseIn(echo, HIGH); 
+  distance = ((340 * time) / 10000) / 2;
+  height = (distance/30) * 100;
+  
+  if (height < 98){
+  Serial.print("거리:");
+  Serial.print(distance);
+  Serial.println("cm");
+  Serial.println("퍼센테이지 :");
+  Serial.println(height);
+  delay(500);
+  }
+  
+  else
+  Serial.println("쓰레기통이 가득 찼습니다.");
+  delay(500);
+}
