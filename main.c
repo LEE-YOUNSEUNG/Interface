@@ -18,11 +18,9 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-
+#include <stdio.h>
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include <stdio.h>
-#include <string.h>
 
 /* USER CODE END Includes */
 
@@ -44,24 +42,51 @@
 /* Private variables ---------------------------------------------------------*/
 TIM_HandleTypeDef htim1;
 
-UART_HandleTypeDef huart1;
+UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-
+#define TRIG_PIN GPIO_PIN_9
+#define TRIG_PORT GPIOA
+#define ECHO_PIN GPIO_PIN_8
+#define ECHO_PORT GPIOA
+uint32_t pMillis;
+uint32_t Value1 = 0;
+uint32_t Value2 = 0;
+uint16_t Distance  = 0;  // cm
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_USART2_UART_Init(void);
 static void MX_TIM1_Init(void);
-static void MX_USART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
-
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+#ifdef __GNUC__
+#define PUTCHAR_PROTOTYPE int __io_putchar(int ch)
+#else
+#define PUTCHAR_PROTOTYPE int fputc(int ch,FILE *f)
+#endif
+
+PUTCHAR_PROTOTYPE
+{
+	if(ch=='\n')
+		HAL_UART_Transmit(&huart2, (uint8_t*) "\r",1, 0xFFFF);
+	HAL_UART_Transmit(&huart2,(uint8_t*) &ch,1,0xFFFF);
+
+	return ch;
+}
+
+
+
+
+// write the callback function
+
+
 
 /* USER CODE END 0 */
 
@@ -93,63 +118,40 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_USART2_UART_Init();
   MX_TIM1_Init();
-  MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
-  char rx_msg[50]; //Set up receive massage transmit massage array
-  void forward(uint32_t dutyCycle, uint32_t delay_ms);
-  void backward(uint32_t dutyCycle, uint32_t delay_ms);
-  void turnRight(uint32_t initialDutyCycle, uint32_t minDutyCycle, uint32_t delay_ms);
-  void turnLeft(uint32_t initialDutyCycle, uint32_t minDutyCycle, uint32_t delay_ms);
+  HAL_TIM_Base_Start(&htim1);
+  HAL_GPIO_WritePin(TRIG_PORT, TRIG_PIN, GPIO_PIN_RESET);
 
-
- {
-
- }
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	  HAL_UART_Receive(&huart1, (uint8_t*)rx_msg, 50, 2000);
-	  if(rx_msg[0]=='L'&&rx_msg[1]=='e'&&rx_msg[2]=='f'&&rx_msg[3]=='t')
-	  {
-	  turnLeft(1000,300, 100);
-	  	  for(int i=0;i<4;i++)
-	  	  {
-		  rx_msg[i]=0;      //reset
-	  	  }
-	  }
+	  	  HAL_GPIO_WritePin(TRIG_PORT, TRIG_PIN, GPIO_PIN_SET);  // pull the TRIG pin HIGH
+	      __HAL_TIM_SET_COUNTER(&htim1, 0);
+	      while (__HAL_TIM_GET_COUNTER (&htim1) < 10);  // wait for 10 us
+	      HAL_GPIO_WritePin(TRIG_PORT, TRIG_PIN, GPIO_PIN_RESET);  // pull the TRIG pin low
 
-	  else if(rx_msg[0]=='R'&&rx_msg[1]=='i'&&rx_msg[2]=='g'&&rx_msg[3]=='h'&&rx_msg[4]=='t')
-	  {
-	  turnRight(1000,300,100);
-	  	  for(int i=0;i<4;i++)
-	  	  {
-	  	  rx_msg[i]=0;      //reset
-	  	  }
-	  }
-	  else if(rx_msg[0]=='f'&&rx_msg[1]=='o'&&rx_msg[2]=='w'&&rx_msg[3]=='a'&&rx_msg[4]=='r'&&rx_msg[5]=='d')
-	  {
-	  forward(1000,1000);
-	  	  for(int i=0;i<4;i++)
-	  	  	  {
-	  	  	  rx_msg[i]=0;      //reset
-	  	  	  }
-	  }
-	  else if(rx_msg[0]=='b'&&rx_msg[1]=='a'&&rx_msg[2]=='c'&&rx_msg[3]=='k'&&rx_msg[4]=='w'&&rx_msg[5]=='a'&&rx_msg[6]=='r'&&rx_msg[7]=='d')
-	  {
-	  backward(1000,1000);
-	  	  for(int i=0;i<4;i++)
-	  	  	  {
-	  	  	  rx_msg[i]=0;      //reset
-	  	  	  }
-	  }
+	      pMillis = HAL_GetTick(); // used this to avoid infinite while loop  (for timeout)
+	      // wait for the echo pin to go high
+	      while (!(HAL_GPIO_ReadPin (ECHO_PORT, ECHO_PIN)) && pMillis + 10 >  HAL_GetTick());
+	      Value1 = __HAL_TIM_GET_COUNTER (&htim1);
 
+	      pMillis = HAL_GetTick(); // used this to avoid infinite while loop (for timeout)
+	      // wait for the echo pin to go low
+	      while ((HAL_GPIO_ReadPin (ECHO_PORT, ECHO_PIN)) && pMillis + 50 > HAL_GetTick());
+	      Value2 = __HAL_TIM_GET_COUNTER (&htim1);
+
+	      Distance = (Value2-Value1)* 0.034/2;
+	      HAL_Delay(50);
+	      printf("%d\n", Distance);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+
   }
   /* USER CODE END 3 */
 }
@@ -166,12 +168,13 @@ void SystemClock_Config(void)
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
+  RCC_OscInitStruct.HSEState = RCC_HSE_ON;
+  RCC_OscInitStruct.HSEPredivValue = RCC_HSE_PREDIV_DIV1;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
-  RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
-  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI_DIV2;
-  RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL16;
+  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
+  RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL9;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
     Error_Handler();
@@ -206,16 +209,14 @@ static void MX_TIM1_Init(void)
 
   TIM_ClockConfigTypeDef sClockSourceConfig = {0};
   TIM_MasterConfigTypeDef sMasterConfig = {0};
-  TIM_OC_InitTypeDef sConfigOC = {0};
-  TIM_BreakDeadTimeConfigTypeDef sBreakDeadTimeConfig = {0};
 
   /* USER CODE BEGIN TIM1_Init 1 */
 
   /* USER CODE END TIM1_Init 1 */
   htim1.Instance = TIM1;
-  htim1.Init.Prescaler = 64-1;
+  htim1.Init.Prescaler = 71;
   htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim1.Init.Period = 1000-1;
+  htim1.Init.Period = 65535;
   htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim1.Init.RepetitionCounter = 0;
   htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
@@ -228,87 +229,48 @@ static void MX_TIM1_Init(void)
   {
     Error_Handler();
   }
-  if (HAL_TIM_PWM_Init(&htim1) != HAL_OK)
-  {
-    Error_Handler();
-  }
   sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
   sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
   if (HAL_TIMEx_MasterConfigSynchronization(&htim1, &sMasterConfig) != HAL_OK)
   {
     Error_Handler();
   }
-  sConfigOC.OCMode = TIM_OCMODE_PWM1;
-  sConfigOC.Pulse = 65535;
-  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
-  sConfigOC.OCNPolarity = TIM_OCNPOLARITY_HIGH;
-  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
-  sConfigOC.OCIdleState = TIM_OCIDLESTATE_RESET;
-  sConfigOC.OCNIdleState = TIM_OCNIDLESTATE_RESET;
-  if (HAL_TIM_PWM_ConfigChannel(&htim1, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_TIM_PWM_ConfigChannel(&htim1, &sConfigOC, TIM_CHANNEL_2) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_TIM_PWM_ConfigChannel(&htim1, &sConfigOC, TIM_CHANNEL_3) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_TIM_PWM_ConfigChannel(&htim1, &sConfigOC, TIM_CHANNEL_4) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sBreakDeadTimeConfig.OffStateRunMode = TIM_OSSR_DISABLE;
-  sBreakDeadTimeConfig.OffStateIDLEMode = TIM_OSSI_DISABLE;
-  sBreakDeadTimeConfig.LockLevel = TIM_LOCKLEVEL_OFF;
-  sBreakDeadTimeConfig.DeadTime = 0;
-  sBreakDeadTimeConfig.BreakState = TIM_BREAK_DISABLE;
-  sBreakDeadTimeConfig.BreakPolarity = TIM_BREAKPOLARITY_HIGH;
-  sBreakDeadTimeConfig.AutomaticOutput = TIM_AUTOMATICOUTPUT_DISABLE;
-  if (HAL_TIMEx_ConfigBreakDeadTime(&htim1, &sBreakDeadTimeConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
   /* USER CODE BEGIN TIM1_Init 2 */
 
   /* USER CODE END TIM1_Init 2 */
-  HAL_TIM_MspPostInit(&htim1);
 
 }
 
 /**
-  * @brief USART1 Initialization Function
+  * @brief USART2 Initialization Function
   * @param None
   * @retval None
   */
-static void MX_USART1_UART_Init(void)
+static void MX_USART2_UART_Init(void)
 {
 
-  /* USER CODE BEGIN USART1_Init 0 */
+  /* USER CODE BEGIN USART2_Init 0 */
 
-  /* USER CODE END USART1_Init 0 */
+  /* USER CODE END USART2_Init 0 */
 
-  /* USER CODE BEGIN USART1_Init 1 */
+  /* USER CODE BEGIN USART2_Init 1 */
 
-  /* USER CODE END USART1_Init 1 */
-  huart1.Instance = USART1;
-  huart1.Init.BaudRate = 9600;
-  huart1.Init.WordLength = UART_WORDLENGTH_8B;
-  huart1.Init.StopBits = UART_STOPBITS_1;
-  huart1.Init.Parity = UART_PARITY_NONE;
-  huart1.Init.Mode = UART_MODE_TX_RX;
-  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
-  if (HAL_UART_Init(&huart1) != HAL_OK)
+  /* USER CODE END USART2_Init 1 */
+  huart2.Instance = USART2;
+  huart2.Init.BaudRate = 115200;
+  huart2.Init.WordLength = UART_WORDLENGTH_8B;
+  huart2.Init.StopBits = UART_STOPBITS_1;
+  huart2.Init.Parity = UART_PARITY_NONE;
+  huart2.Init.Mode = UART_MODE_TX_RX;
+  huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart2.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart2) != HAL_OK)
   {
     Error_Handler();
   }
-  /* USER CODE BEGIN USART1_Init 2 */
+  /* USER CODE BEGIN USART2_Init 2 */
 
-  /* USER CODE END USART1_Init 2 */
+  /* USER CODE END USART2_Init 2 */
 
 }
 
@@ -330,145 +292,36 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOC, motor_1_IN1_Pin|motor_1_IN2_Pin|motor_2_IN3_Pin|motor_2_IN4_Pin
-                          |motor_4_IN3_Pin|motor_4_IN4_Pin|motor_3_IN1_Pin|motor_3_IN2_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, LD2_Pin|GPIO_PIN_9, GPIO_PIN_RESET);
 
-  /*Configure GPIO pins : motor_1_IN1_Pin motor_1_IN2_Pin motor_2_IN3_Pin motor_2_IN4_Pin
-                           motor_4_IN3_Pin motor_4_IN4_Pin motor_3_IN1_Pin motor_3_IN2_Pin */
-  GPIO_InitStruct.Pin = motor_1_IN1_Pin|motor_1_IN2_Pin|motor_2_IN3_Pin|motor_2_IN4_Pin
-                          |motor_4_IN3_Pin|motor_4_IN4_Pin|motor_3_IN1_Pin|motor_3_IN2_Pin;
+  /*Configure GPIO pin : B1_Pin */
+  GPIO_InitStruct.Pin = B1_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : LD2_Pin PA9 */
+  GPIO_InitStruct.Pin = LD2_Pin|GPIO_PIN_9;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
-
-  /*Configure GPIO pins : USART_TX_Pin USART_RX_Pin */
-  GPIO_InitStruct.Pin = USART_TX_Pin|USART_RX_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : PA8 */
+  GPIO_InitStruct.Pin = GPIO_PIN_8;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
 
 /* USER CODE BEGIN MX_GPIO_Init_2 */
 /* USER CODE END MX_GPIO_Init_2 */
 }
 
 /* USER CODE BEGIN 4 */
-void forward(uint32_t dutyCycle, uint32_t delay_ms) {
-
-    HAL_GPIO_WritePin(GPIOC, motor_1_IN1_Pin|motor_2_IN3_Pin|motor_3_IN1_Pin|motor_4_IN3_Pin, GPIO_PIN_SET);
-    HAL_GPIO_WritePin(GPIOC, motor_1_IN2_Pin|motor_2_IN4_Pin|motor_3_IN2_Pin|motor_4_IN4_Pin, GPIO_PIN_RESET);
-
-
-    HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
-    HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
-    HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_3);
-    HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_4);
-
-
-    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, dutyCycle);
-    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_2, dutyCycle);
-    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_3, dutyCycle);
-    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_4, dutyCycle);
-
-
-    HAL_Delay(delay_ms);
-
-
-    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, 0);
-    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_2, 0);
-    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_3, 0);
-    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_4, 0);
-}
-void backward(uint32_t dutyCycle, uint32_t delay_ms) {
-    // 1. 媛? 紐⑦��?�� 諛⑺�� ?��?�� 諛? PWM 梨��� ?��?��?��
-    HAL_GPIO_WritePin(GPIOC, motor_1_IN1_Pin|motor_2_IN3_Pin, GPIO_PIN_RESET);
-    HAL_GPIO_WritePin(GPIOC, motor_1_IN2_Pin|motor_2_IN4_Pin, GPIO_PIN_SET);
-
-    // PWM 梨��� ?��?��
-    HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
-    HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
-    HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_3);
-    HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_4);
-
-    // PWM duty cycle ?��?��
-    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, dutyCycle);
-    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_2, dutyCycle);
-    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_3, dutyCycle);
-    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_4, dutyCycle);
-
-    // ?��?�� ?��媛? ?��?�� ??湲?
-    HAL_Delay(delay_ms);
-
-    // 2. 紐⑦�� ?��吏? (PWM duty cycle?�� 0?�쇰�? ?��?��?��?�� 紐⑦�� ?��吏?)
-    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, 0);
-    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_2, 0);
-    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_3, 0);
-    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_4, 0);
-}
-
-void turnLeft(uint32_t initialDutyCycle, uint32_t minDutyCycle, uint32_t delay_ms) {
-    // 1. 紐⑦�� 1踰�怨� 3踰��� 諛⑺��?�� ?��?��?��?�� PWM 異���
-    HAL_GPIO_WritePin(GPIOC, motor_1_IN1_Pin | motor_3_IN1_Pin, GPIO_PIN_SET);
-    HAL_GPIO_WritePin(GPIOC, motor_1_IN2_Pin | motor_3_IN2_Pin, GPIO_PIN_RESET);
-
-    // PWM 梨��� ?��?��
-    HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
-    HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
-    HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_3);
-    HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_4);
-
-    // 珥�湲� ???�� ?��?��?�� ?��?��
-    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, initialDutyCycle);
-    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_3, initialDutyCycle);
-
-    // ???�� ?��?��?�� 媛��� 猷⑦��
-    for (uint32_t dutyCycle = initialDutyCycle; dutyCycle >= minDutyCycle; dutyCycle -= 10) {
-        // ???�� ?��?��?�� ?��?��
-        __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, dutyCycle);
-        __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_3, dutyCycle);
-        // 吏??�� ?��媛? ??湲?
-        HAL_Delay(delay_ms);
-    }
-
-    // 紐⑦�� ?��吏? (PWM duty cycle?�� 0?�쇰�? ?��?��?��?�� 紐⑦�곕�? ?��吏?)
-
-    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, 0);
-    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_3, 0);
-    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_2, 0);
-    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_4, 0);
-}
-void turnRight(uint32_t initialDutyCycle, uint32_t minDutyCycle, uint32_t delay_ms) {
-    // 1. 紐⑦�� 2踰�怨� 4踰��� 諛⑺��?�� ?��?��?��?�� PWM 異���
-    HAL_GPIO_WritePin(GPIOC, motor_2_IN3_Pin | motor_4_IN3_Pin, GPIO_PIN_SET);
-    HAL_GPIO_WritePin(GPIOC, motor_2_IN4_Pin | motor_4_IN4_Pin, GPIO_PIN_RESET);
-
-    // PWM 梨��� ?��?��
-
-    HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
-    HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
-    HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_3);
-    HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_4);
-
-    // 珥�湲� ???�� ?��?��?�� ?��?��
-    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_2, initialDutyCycle);
-    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_4, initialDutyCycle);
-
-    // ???�� ?��?��?�� 媛��� 猷⑦��
-    for (uint32_t dutyCycle = initialDutyCycle; dutyCycle >= minDutyCycle; dutyCycle -= 10) {
-        // ???�� ?��?��?�� ?��?��
-        __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_2, dutyCycle);
-        __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_4, dutyCycle);
-        // 吏??�� ?��媛? ??湲?
-        HAL_Delay(delay_ms);
-    }
-
-    // 紐⑦�� ?��吏? (PWM duty cycle?�� 0?�쇰�? ?��?��?��?�� 紐⑦�곕�? ?��吏?)
-    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, 0);
-    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_3, 0);
-    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_2, 0);
-    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_4, 0);
-}
-
 
 /* USER CODE END 4 */
 
